@@ -810,6 +810,25 @@ defmodule AshSqlite.SqlImplementation do
   @impl true
   def multicolumn_distinct?, do: false
 
+  # A uuid column cast to its own type renders as `CAST(col AS TEXT)`, which is a no-op for the
+  # stored value (ecto_sqlite3 already stores uuids as text, or skips the cast for binary uuids)
+  # but prevents SQLite from using any index on the column. Leave bare uuid columns uncast.
+  @impl true
+  def ref_cast_type(type) do
+    if uuid_storage?(type), do: nil, else: type
+  end
+
+  defp uuid_storage?(type) when type in [:uuid, :binary_id], do: true
+
+  defp uuid_storage?({:parameterized, _} = type), do: Ecto.Type.type(type) in [:uuid, :binary_id]
+
+  defp uuid_storage?(type) when is_atom(type) do
+    Code.ensure_loaded?(type) and function_exported?(type, :type, 0) and
+      type.type() in [:uuid, :binary_id]
+  end
+
+  defp uuid_storage?(_type), do: false
+
   @impl true
   def parameterized_type({:parameterized, _} = type, _) do
     type
